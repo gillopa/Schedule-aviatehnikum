@@ -3,11 +3,11 @@ using iText.Kernel.Pdf.Canvas.Parser.Listener;
 using iText.Kernel.Pdf.Canvas.Parser;
 using iText.Kernel.Geom;
 using iText.Kernel.Pdf.Canvas.Parser.Data;
+using Telegram.Bot.Types;
 
 class Raspisanie
 {
-    public static string NameGroup = "Название группы (именно так как указана в расписание если большими - то писать большими)";
-    public readonly static List<string> DaysOfWeek = new List<string>
+    public static readonly List<string> DaysOfWeek = new List<string>
     {
         "ПОНЕДЕЛЬНИК",
         "ВТОРНИК",
@@ -16,33 +16,42 @@ class Raspisanie
         "ПЯТНИЦА",
         "СУББОТА"
     };
-    public static async Task<string?> GetDayOfWeekAsync(FileInfo filePath)
+    public string? DayOfWeek { get; private set; }
+    public string? Date { get; private set; }
+    public FileInfo FileInfo { get; private set; }
+    
+    public Raspisanie(FileInfo fileInfo)
     {
-        try
-        {
-            byte[] fileBytes = await File.ReadAllBytesAsync(filePath.FullName);
-            string extractedText = ExtractTextFromPdfBytes(fileBytes);
-            foreach (var day in DaysOfWeek)
-            {
-                if (extractedText.Contains(day))
-                    return day;
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"An error occurred: {ex.Message}");
-        }
-        return null;
+        DayOfWeek = PdfExten.GetDayOfWeek(fileInfo);
+        Date = PdfExten.GetDate(fileInfo);
+        FileInfo = fileInfo;
     }
-    public static int RaspisanieCounter { get; set; }
+    
+    public static readonly string RaspisanieZvonokvPath = "rspzvonkov.png";
 
-    public async static Task<bool> IsRaspisanieHasMineGroupNameAsync(string filePath)
+    public static InputFileStream GetRaspisenieZnonkov()
+    {
+        using (var fileStream = new FileStream(RaspisanieZvonokvPath, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            var inputFile = InputFile.FromStream(fileStream);
+            return inputFile;
+        }
+    }
+    
+    public bool IsRaspisanieValid()
+    {
+        if (DayOfWeek == null || Date == null || FileInfo == null)
+            return false;
+        return true;
+    }
+
+    public async Task<bool> IsRaspisanieHasMineGroupNameAsync(string filePath, string groupName)
     {
         try
         {
             byte[] fileBytes = await File.ReadAllBytesAsync(filePath);
-            string extractedText = ExtractTextFromPdfBytes(fileBytes);
-            return extractedText.Contains(NameGroup);
+            string extractedText = PdfExten.ExtractTextFromPdfBytes(fileBytes);
+            return extractedText.Contains(groupName);
         }
         catch (Exception ex)
         {
@@ -50,24 +59,14 @@ class Raspisanie
             return false;
         }
     }
-    private static string ExtractTextFromPdfBytes(byte[] pdfBytes)
+    public FileInfo? GetMyGroupRaspisanie(string groupName)
     {
-        using (var stream = new MemoryStream(pdfBytes))
-        {
-            using (var pdfReader = new PdfReader(stream))
-            {
-                using (var pdfDocument = new iText.Kernel.Pdf.PdfDocument(pdfReader))
-                {
-                    var text = new System.Text.StringBuilder();
-                    for (int i = 1; i <= pdfDocument.GetNumberOfPages(); ++i)
-                    {
-                        ITextExtractionStrategy strategy = new SimpleTextExtractionStrategy();
-                        var currentText = PdfTextExtractor.GetTextFromPage(pdfDocument.GetPage(i), strategy);
-                        text.Append(currentText);
-                    }
-                    return text.ToString();
-                }
-            }
-        }
+        string filePath = $"{groupName}crop{FileInfo.FullName}";
+        if (File.Exists(filePath))
+            return new FileInfo(filePath);
+        var coordsTuple = PdfExten.GetCoords(FileInfo, groupName);
+        PdfExten.CropPdf(FileInfo, new FileInfo(filePath), coordsTuple.x - 15, coordsTuple.y + 19, 49, -174); // This digits for cool croping
+        Converter.PdfToPng(filePath, $"{filePath}.png");
+        return new FileInfo(filePath);
     }
 }

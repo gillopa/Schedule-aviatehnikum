@@ -1,23 +1,34 @@
 using System;
+using System.Collections.Concurrent;
 using System.Configuration;
+using System.Data.Entity.Core.Metadata.Edm;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Hosting;
+using Newtonsoft.Json.Converters;
+using Org.BouncyCastle.Math.EC.Rfc7748;
 using Telegram.Bot;
 using Telegram.Bot.Exceptions;
 using Telegram.Bot.Polling;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
+using Telegram.Bot.Types.ReplyMarkups;
 
 
-class TelegramBotRaspisanie
+class TelegramBot : IHostedService
 {
-    static ITelegramBotClient bot;
-    static string botTokenPath = "PATH_TO_YOUR_JSONCONF";
+    private TelegramBotClient bot;
+    private string botTokenPath = "Token.json";
+    private ConcurrentDictionary<string, string> _cashFileIds = new();
+    private CancellationTokenSource _cancelTokenSource;
 
-    public static async Task Start()
+    public async Task StartAsync(CancellationToken cancellationToken)
     {
+        _cancelTokenSource = new CancellationTokenSource();
         string jsonString = File.ReadAllText(botTokenPath);
         JsonSerializerOptions options = new JsonSerializerOptions
         {
@@ -29,56 +40,245 @@ class TelegramBotRaspisanie
         {
             throw new Exception("Not found");
         }
-        var botToken = configuration["Token"].ToString();
+
+        var botToken = configuration["token"].ToString();
         bot = new TelegramBotClient(botToken);
         var me = await bot.GetMeAsync();
         Console.WriteLine($"Bot {me.Username} has started.");
-
-        var cts = new CancellationTokenSource();
-        var cancellationToken = cts.Token;
         var receiverOptions = new ReceiverOptions
         {
             AllowedUpdates = { }
         };
-        bot.StartReceiving(HandleUpdateAsync, HandleErrorAsync, receiverOptions, cancellationToken);
+        bot.StartReceiving(
+            updateHandler: HandleUpdateAsync,
+            errorHandler: HandleErrorAsync,
+            receiverOptions: new Telegram.Bot.Polling.ReceiverOptions()
+            {
+                AllowedUpdates = new[]
+                {
+                    UpdateType.Message,
+                    UpdateType.CallbackQuery
+                }
+            },
+            cancellationToken: _cancelTokenSource.Token
+        );
     }
-    public static async Task SendToAllSubscribers(string filePath, string capture)
+
+    public async Task StopAsync(CancellationToken cancellationToken)
+    {
+        await _cancelTokenSource.CancelAsync();
+    }
+
+    public bool AddNewRaspisanie(string filePath, string capture)
+    {
+        if (string.IsNullOrEmpty(filePath) || string.IsNullOrEmpty(capture))
+        {
+            return false;
+        }
+
+        _cashFileIds.TryRemove(capture, out _);
+        if (_cashFileIds.Count >= 5 && _cashFileIds.TryRemove(_cashFileIds.Keys.FirstOrDefault(), out _))
+        {
+        }
+
+        return _cashFileIds.TryAdd(capture, filePath);
+    }
+
+    public async Task SendToAllSubscribers(Raspisanie raspisanie)
     {
         using (var fileStream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read))
         {
             var users = await DataBase.GetUsersWithMailingEnabledAsync();
+            var inputFile = InputFile.FromStream(fileStream);
             foreach (var uniqueId in users)
             {
-                await bot.SendPhoto(uniqueId, InputFile.FromStream(fileStream), capture);
+                await bot.SendPhoto(uniqueId, inputFile, capture);
             }
         }
     }
 
-    private static async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, CancellationToken cancellationToken)
+
+    private async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update,
+        CancellationToken cancellationToken)
     {
-        if (update.Message == null)
-            return;
-        string updateMessage = update.Message.Text ?? String.Empty;
-        if (updateMessage == "/start")
+        try
         {
-            await DataBase.AddNewClientAsync($"{update.Message.From?.FirstName ?? "empty"} {update.Message.From?.LastName ?? "empty"}", update.Message.From?.Id ?? 0);
-            await botClient.SendMessage(update.Message.From?.Id ?? 0, "Hello, i'm shrimp let's do shripies things shrimp shrimp");
+            if (update.Type == UpdateType.CallbackQuery && update.CallbackQuery != null)
+            {
+                await HandleCallbackQuery(botClient, update.CallbackQuery, cancellationToken);
+            }
+            else if (update.Type == UpdateType.Message && update.Message != null)
+            {
+                await HandleMessage(botClient, update.Message, cancellationToken);
+            }
         }
-        if (updateMessage == "/subscribe")
+        catch (Exception ex)
         {
-            await DataBase.UpdateMailingStatusAsync(update.Message.From?.Id ?? 0, 1);
-            await botClient.SendMessage(update.Message.From?.Id ?? 0, "Shrimpy shrim shrimp, now you will get rsp right at the time posting it");
-        }
-        if (updateMessage == "/unsubscribe")
-        {
-            await DataBase.UpdateMailingStatusAsync(update.Message.From?.Id ?? 0, 0);
-            await botClient.SendMessage(update.Message.From?.Id ?? 0, "You are bitch, go fucking out of here");
+            Console.WriteLine(ex);
         }
     }
 
-    private static Task HandleErrorAsync(ITelegramBotClient botClient, Exception exception, CancellationToken cancellationToken)
+    private async Task HandleCallbackQuery(ITelegramBotClient botClient, CallbackQuery callbackQuery,
+        CancellationToken cancellationToken)
+    {
+        var chatId = callbackQuery.From?.Id ?? 0;
+        if (callbackQuery == null || callbackQuery.Data == null || chatId == 0)
+            return;
+        try
+        {
+            var json = JsonObject.Parse(callbackQuery.Data)?.AsObject();
+            if (json == null)
+                return;
+            if (json.ContainsKey("group"))
+            {
+                var group = json["group"]?.ToString();
+                if (string.IsNullOrEmpty(group))
+                {
+                    await bot.SendMessage(chatId,
+                        "I dont really understand how you get in there, but your group is empty.",
+                        cancellationToken: cancellationToken);
+                    return;
+                }
+
+                await DataBase.UpdateGroupStatusAsync(chatId, group);
+            }
+            else if (json.ContainsKey("getDay"))
+            {
+                var day = json["getDay"]?.ToString();
+                var group = await DataBase.GetGroup(chatId);
+                if (group == null || day == null)
+                    return;
+                var link = await DataBase.GetLinkByDateAndGroup(group, DateOnly.Parse(day));
+                await bot.SendPhoto(chatId, link, cancellationToken: cancellationToken);
+            }
+        }
+        catch (JsonException e)
+        {
+            Console.WriteLine(e);
+            await botClient.SendMessage(chatId, "Your request are dumb", cancellationToken: cancellationToken);
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e);
+        }
+    }
+
+    private async Task HandleMessage(ITelegramBotClient botClient, Message message,
+        CancellationToken cancellationToken)
+    {
+        if (message == null)
+            return;
+
+        string updateMessage = message.Text ?? string.Empty;
+
+        switch (updateMessage)
+        {
+            case "/start":
+                await HandleStartCommand(botClient, message, cancellationToken);
+                break;
+            case "/subscribe":
+                await HandleSubscribeCommand(botClient, message, cancellationToken);
+                break;
+            case "/unsubscribe":
+                await HandleUnsubscribeCommand(botClient, message, cancellationToken);
+                break;
+            case "/zvonki":
+                await HandleZvonkiCommand(botClient, message, cancellationToken);
+                break;
+            case "/raspisanie":
+                await HandleRaspisanieCommand(botClient, message, cancellationToken);
+                break;
+        }
+    }
+
+    private async Task HandleStartCommand(ITelegramBotClient botClient, Message message,
+        CancellationToken cancellationToken)
+    {
+        InlineKeyboardButton[] buttons =
+        {
+            InlineKeyboardButton.WithCallbackData("РП-21-1", new JsonObject { { "group", "РП-21-1" } }.ToString())
+        };
+        var currentButtonsRow = new List<InlineKeyboardButton[]>
+        {
+            buttons
+        };
+        InlineKeyboardMarkup inlineKeyboardDevice = new(currentButtonsRow);
+        await DataBase.AddNewClientAsync($"{message.From?.FirstName ?? "empty"} {message.From?.LastName ?? "empty"}",
+            message.From?.Id ?? 0);
+        await botClient.SendMessage(message.From?.Id ?? 0, "Hello, i'm shrimp let's do shripies things shrimp shrimp",
+            cancellationToken: cancellationToken);
+        await botClient.SendMessage(message.From?.Id ?? 0, "Выбери группу: ", replyMarkup: inlineKeyboardDevice,
+            cancellationToken: cancellationToken);
+    }
+
+    private async Task HandleSubscribeCommand(ITelegramBotClient botClient, Message message,
+        CancellationToken cancellationToken)
+    {
+        await DataBase.UpdateMailingStatusAsync(message.From?.Id ?? 0, 1);
+        await botClient.SendMessage(message.From?.Id ?? 0,
+            "Shrimpy shrim shrimp, now you will get rsp right at the time posting it",
+            cancellationToken: cancellationToken);
+    }
+
+    private async Task HandleUnsubscribeCommand(ITelegramBotClient botClient, Message message,
+        CancellationToken cancellationToken)
+    {
+        await DataBase.UpdateMailingStatusAsync(message.From?.Id ?? 0, 0);
+        await botClient.SendMessage(message.From?.Id ?? 0, "You are bitch, go fucking out of here",
+            cancellationToken: cancellationToken);
+    }
+
+    private async Task HandleZvonkiCommand(ITelegramBotClient botClient, Message message,
+        CancellationToken cancellationToken)
+    {
+        var rsp = GetRaspisenieZnonkov();
+        await botClient.SendPhoto(message.From?.Id ?? 0, rsp, cancellationToken: cancellationToken);
+    }
+
+    private async Task HandleRaspisanieCommand(ITelegramBotClient botClient, Message message,
+        CancellationToken cancellationToken)
+    {
+        var group = await DataBase.GetGroup(message.From?.Id ?? 0);
+        var keyboardButtonsRows = new List<InlineKeyboardButton[]>();
+        var currentButtonsRow = new List<InlineKeyboardButton>();
+        var scheduleDateList = await DataBase.GetDatesByDateAndGroup(group, 5);
+        for (var day = DayOfWeek.Monday; day <= DayOfWeek.Sunday; day++)
+        {
+            if (scheduleDateList.Where(x => x.DayOfWeek == day).Any())
+            {
+                var schedule = scheduleDateList.Where(x => x.DayOfWeek == day).FirstOrDefault();
+                currentButtonsRow.Add(InlineKeyboardButton.WithCallbackData(day.ToString(),
+                    new JsonObject { { "getDay", schedule.ToString("yyyy.MM.dd") } }.ToString()));
+            }
+        }
+
+        if (currentButtonsRow.Count > 0)
+            keyboardButtonsRows.Add(currentButtonsRow.ToArray());
+        InlineKeyboardMarkup inlineKeyboardDevice = new(keyboardButtonsRows);
+
+        await botClient.SendMessage(message.From?.Id ?? 0, "Доступные расписания:", replyMarkup: inlineKeyboardDevice,
+            cancellationToken: cancellationToken);
+    }
+
+
+    private Task HandleErrorAsync(ITelegramBotClient botClient, Exception exception,
+        CancellationToken cancellationToken)
     {
         Console.WriteLine(exception);
         return Task.CompletedTask;
+    }
+
+    public string GetTextInsideParentheses(string input)
+    {
+        string pattern = @"\((.*?)\)";
+
+        Match match = Regex.Match(input, pattern);
+
+        if (match.Success)
+        {
+            return match.Groups[1].Value;
+        }
+
+        return null;
     }
 }
