@@ -1,17 +1,32 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Serilog;
 using rsp;
 
-var app = Host.CreateDefaultBuilder()
-    .ConfigureServices((context, services) =>
-    {
-        services.AddHostedService<SchedulePullingService>();
-        services.AddHostedService<TelegramBot>();
-        services.AddMediatR(config =>
+Log.Logger = new LoggerConfiguration()
+    .WriteTo.Console()
+    .CreateLogger();
+try 
+{
+    var app = Host.CreateDefaultBuilder()
+        .ConfigureServices((context, services) =>
         {
-            config.RegisterServicesFromAssembly(typeof(Program).Assembly);
+            services.AddHostedService<SchedulePullingService>();
+            services.AddHostedService<TelegramBot>();
+            services.AddMediatR(config =>
+            {
+                config.RegisterServicesFromAssembly(typeof(Program).Assembly);
+            });
         });
-    });
+}
+catch (Exception ex)
+{
+    Log.Fatal(ex, "Unhandled exception.");
+}
+finally
+{
+    await Log.CloseAndFlushAsync();
+}
 
 //class Program
 //{
