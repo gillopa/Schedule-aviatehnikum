@@ -59,40 +59,6 @@ class TelegramBot : IHostedService
     {
         await _cancelTokenSource.CancelAsync();
     }
-
-    public bool AddNewRaspisanie(string filePath, string capture)
-    {
-        if (string.IsNullOrEmpty(filePath) || string.IsNullOrEmpty(capture))
-        {
-            return false;
-        }
-
-        _cashFileIds.TryRemove(capture, out _);
-        if (_cashFileIds.Count >= 5 && _cashFileIds.TryRemove(_cashFileIds.Keys.FirstOrDefault(), out _))
-        {
-        }
-
-        return _cashFileIds.TryAdd(capture, filePath);
-    }
-<<<<<<< HEAD
-    // TODO
-=======
-    //  TODO
->>>>>>> dd5c314dbd9260c33d6ccc18ae913e5bc2747a27
-    // public async Task SendToAllSubscribers(Raspisanie raspisanie)
-    // {
-    //     using (var fileStream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read))
-    //     {
-    //         var users = await DataBase.GetUsersWithMailingEnabledAsync();
-    //         var inputFile = InputFile.FromStream(fileStream);
-    //         foreach (var uniqueId in users)
-    //         {
-    //             await bot.SendPhoto(uniqueId, inputFile, capture);
-    //         }
-    //     }
-    // }
-
-
     private async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update,
         CancellationToken cancellationToken)
     {
