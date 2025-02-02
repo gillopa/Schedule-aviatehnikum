@@ -1,18 +1,9 @@
-using System;
 using System.Collections.Concurrent;
-using System.Configuration;
-using System.Data.Entity.Core.Metadata.Edm;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
-using System.Threading;
-using System.Threading.Tasks;
 using Microsoft.Extensions.Hosting;
-using Newtonsoft.Json.Converters;
-using Org.BouncyCastle.Math.EC.Rfc7748;
 using Telegram.Bot;
-using Telegram.Bot.Exceptions;
 using Telegram.Bot.Polling;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
@@ -83,19 +74,19 @@ class TelegramBot : IHostedService
 
         return _cashFileIds.TryAdd(capture, filePath);
     }
-
-    public async Task SendToAllSubscribers(Raspisanie raspisanie)
-    {
-        using (var fileStream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read))
-        {
-            var users = await DataBase.GetUsersWithMailingEnabledAsync();
-            var inputFile = InputFile.FromStream(fileStream);
-            foreach (var uniqueId in users)
-            {
-                await bot.SendPhoto(uniqueId, inputFile, capture);
-            }
-        }
-    }
+    //  TODO
+    // public async Task SendToAllSubscribers(Raspisanie raspisanie)
+    // {
+    //     using (var fileStream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read))
+    //     {
+    //         var users = await DataBase.GetUsersWithMailingEnabledAsync();
+    //         var inputFile = InputFile.FromStream(fileStream);
+    //         foreach (var uniqueId in users)
+    //         {
+    //             await bot.SendPhoto(uniqueId, inputFile, capture);
+    //         }
+    //     }
+    // }
 
 
     private async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update,
@@ -148,8 +139,9 @@ class TelegramBot : IHostedService
                 var group = await DataBase.GetGroup(chatId);
                 if (group == null || day == null)
                     return;
-                var link = await DataBase.GetLinkByDateAndGroup(group, DateOnly.Parse(day));
-                await bot.SendPhoto(chatId, link, cancellationToken: cancellationToken);
+                var photoId = await DataBase.GetSchedileIdByDateAndGroup(group, DateOnly.Parse(day));
+                var photo = InputFile.FromFileId(photoId.ToString());
+                await bot.SendPhoto(chatId, photo, cancellationToken: cancellationToken);
             }
         }
         catch (JsonException e)

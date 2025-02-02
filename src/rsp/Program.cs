@@ -18,6 +18,8 @@ try
                 config.RegisterServicesFromAssembly(typeof(Program).Assembly);
             });
         });
+
+    await app.Build().RunAsync();
 }
 catch (Exception ex)
 {
