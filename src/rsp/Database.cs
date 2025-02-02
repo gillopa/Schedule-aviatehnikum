@@ -1,6 +1,8 @@
+using System.Data;
 using System.Data.SQLite;
 using System.Globalization;
 using System.Threading.Tasks;
+using Microsoft.VisualBasic;
 
 static class DataBase
 {
@@ -133,7 +135,23 @@ static class DataBase
             }
         }
     }
-    public static async Task<string?> GetLinkByDateAndGroup(string group, DateOnly date)
+    public static async Task<long> GetScheduleCalls()
+    {
+        using (SQLiteConnection connection = new SQLiteConnection(_connectionString))
+        {
+            await connection.OpenAsync();
+            string query =
+                "SELECT TOP 1 link FROM RaspisanieCalls";
+            using (SQLiteCommand command = new SQLiteCommand(query, connection))
+            {
+                var response = await command.ExecuteScalarAsync();
+                if ((long?)response == null)
+                    return 0;
+                return (long)response;
+            }
+        }
+    }
+    public static async Task<long> GetSchedileIdByDateAndGroup(string group, DateOnly date)
     {
         using (SQLiteConnection connection = new SQLiteConnection(_connectionString))
         {
@@ -145,13 +163,10 @@ static class DataBase
                 command.Parameters.AddWithValue("@group", group);
                 command.Parameters.AddWithValue("@date", date.ToString("yyyy.MM.dd"));
 
-                using (var reader = await command.ExecuteReaderAsync())
-                {
-                    if (await reader.ReadAsync())
-                        return reader.GetString(0);
-                    else
-                        return null;
-                }
+                var response = await command.ExecuteScalarAsync();
+                if ((long?)response == null)
+                    return 0;
+                return (long)response;
             }
         }
     }
