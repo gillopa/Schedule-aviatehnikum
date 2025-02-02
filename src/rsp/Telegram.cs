@@ -83,19 +83,19 @@ class TelegramBot : IHostedService
 
         return _cashFileIds.TryAdd(capture, filePath);
     }
-
-    public async Task SendToAllSubscribers(Raspisanie raspisanie)
-    {
-        using (var fileStream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read))
-        {
-            var users = await DataBase.GetUsersWithMailingEnabledAsync();
-            var inputFile = InputFile.FromStream(fileStream);
-            foreach (var uniqueId in users)
-            {
-                await bot.SendPhoto(uniqueId, inputFile, capture);
-            }
-        }
-    }
+    // TODO
+    // public async Task SendToAllSubscribers(Raspisanie raspisanie)
+    // {
+    //     using (var fileStream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read))
+    //     {
+    //         var users = await DataBase.GetUsersWithMailingEnabledAsync();
+    //         var inputFile = InputFile.FromStream(fileStream);
+    //         foreach (var uniqueId in users)
+    //         {
+    //             await bot.SendPhoto(uniqueId, inputFile, capture);
+    //         }
+    //     }
+    // }
 
 
     private async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update,
