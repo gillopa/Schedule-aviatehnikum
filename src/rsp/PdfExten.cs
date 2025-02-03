@@ -7,35 +7,26 @@ using System.Globalization;
 using iText.Layout.Element;
 using iText.Kernel.Pdf.Canvas;
 using System.Text.RegularExpressions;
+using iText.Kernel.Pdf.Annot;
 
-class PdfExten
+static class PdfDocumentExtensions
 {
-    public static string ExtractTextFromPdfBytes(byte[] pdfBytes)
+    public static string ExtractTextFromPdfBytes(this PdfDocument pdfDocument)
     {
-        using (var stream = new MemoryStream(pdfBytes))
+        var text = new System.Text.StringBuilder();
+        for (int i = 1; i <= pdfDocument.GetNumberOfPages(); ++i)
         {
-            using (var pdfReader = new PdfReader(stream))
-            {
-                using (var pdfDocument = new iText.Kernel.Pdf.PdfDocument(pdfReader))
-                {
-                    var text = new System.Text.StringBuilder();
-                    for (int i = 1; i <= pdfDocument.GetNumberOfPages(); ++i)
-                    {
-                        ITextExtractionStrategy strategy = new SimpleTextExtractionStrategy();
-                        var currentText = PdfTextExtractor.GetTextFromPage(pdfDocument.GetPage(i), strategy);
-                        text.Append(currentText);
-                    }
-                    return text.ToString();
-                }
-            }
+            ITextExtractionStrategy strategy = new SimpleTextExtractionStrategy();
+            var currentText = PdfTextExtractor.GetTextFromPage(pdfDocument.GetPage(i), strategy);
+            text.Append(currentText);
         }
+        return text.ToString();
     }
-    public static string? GetDayOfWeek(FileInfo filePath)
+    public static string? GetDayOfWeek(this PdfDocument pdfDocument)
     {
         try
         {
-            byte[] fileBytes = File.ReadAllBytes(filePath.FullName);
-            string extractedText = ExtractTextFromPdfBytes(fileBytes);
+            string extractedText = ExtractTextFromPdfBytes(pdfDocument);
             foreach (var day in Raspisanie.DaysOfWeek)
             {
                 if (extractedText.Contains(day))
@@ -48,57 +39,47 @@ class PdfExten
         }
         return null;
     }
-    public static string? GetDate(FileInfo fileInfo)
+    public static string? GetDate(this PdfDocument pdfDocument)
     {
         string pattern = @"учебных занятий на (\d{2}\.\d{2}\.\d{4}) \((.*?)\)"; // Паттерн для поиска
-        using (var reader = new PdfReader(fileInfo.FullName))
+        RegexBasedLocationExtractionStrategy strategy = new RegexBasedLocationExtractionStrategy(pattern);
+        new PdfCanvasProcessor(strategy).ProcessPageContent(pdfDocument.GetPage(1));
+        foreach (IPdfTextLocation location in strategy.GetResultantLocations())
         {
-            using (PdfDocument pdfDocument = new PdfDocument(reader))
+            if (location != null)
             {
-                RegexBasedLocationExtractionStrategy strategy = new RegexBasedLocationExtractionStrategy(pattern);
-                new PdfCanvasProcessor(strategy).ProcessPageContent(pdfDocument.GetPage(1));
-                foreach (IPdfTextLocation location in strategy.GetResultantLocations())
+                string text = location.GetText();
+                Match match = Regex.Match(text, pattern);
+                if (match.Success)
                 {
-                    if (location != null)
-                    {
-                        string text = location.GetText();
-                        Match match = Regex.Match(text, pattern);
-                        if (match.Success)
-                        {
-                            return match.Groups[1].Value;
-                        }
-
-                    }
+                    return match.Groups[1].Value;
                 }
+
             }
         }
         return null;
     }
-    public static (float x, float y) GetCoords(FileInfo fileInfo, string nameOfGrup)
+    public static (float x, float y) GetCoords(this PdfDocument pdfDocument, string nameOfGrup)
     {
-        using (var reader = new PdfReader(fileInfo))
-        {
-            PdfDocument pdfDocument = new PdfDocument(reader);
 
-            for (int page = 1; page <= pdfDocument.GetNumberOfPages(); page++)
+        for (int page = 1; page <= pdfDocument.GetNumberOfPages(); page++)
+        {
+            RegexBasedLocationExtractionStrategy strategy = new RegexBasedLocationExtractionStrategy(nameOfGrup);
+            new PdfCanvasProcessor(strategy).ProcessPageContent(pdfDocument.GetPage(page));
+            foreach (IPdfTextLocation location in strategy.GetResultantLocations())
             {
-                RegexBasedLocationExtractionStrategy strategy = new RegexBasedLocationExtractionStrategy(nameOfGrup);
-                new PdfCanvasProcessor(strategy).ProcessPageContent(pdfDocument.GetPage(page));
-                foreach (IPdfTextLocation location in strategy.GetResultantLocations())
+                if (location != null)
                 {
-                    if (location != null)
-                    {
-                        Rectangle rect = location.GetRectangle();
-                        return (rect.GetX(), rect.GetY());
-                    }
+                    Rectangle rect = location.GetRectangle();
+                    return (rect.GetX(), rect.GetY());
                 }
             }
         }
         return (0, 0);
     }
-    public static void CropPdf(FileInfo inputFile, FileInfo outputFile, float x, float y, float width, float height)
+    public static void CropPdf(this PdfDocument pdfDocument, FileInfo outputFile, float x, float y, float width, float height)
     {
-        using (PdfReader reader = new PdfReader(inputFile.FullName))
+        using (PdfReader reader = pdfDocument.GetReader())
         using (PdfWriter writer = new PdfWriter(outputFile.FullName))
         using (PdfDocument pdfDoc = new PdfDocument(reader, writer))
         {

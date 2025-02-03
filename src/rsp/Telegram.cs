@@ -193,8 +193,8 @@ class TelegramBot : IHostedService
     private async Task HandleZvonkiCommand(ITelegramBotClient botClient, Message message,
         CancellationToken cancellationToken)
     {
-        var rsp = GetRaspisenieZnonkov();
-        await botClient.SendPhoto(message.From?.Id ?? 0, rsp, cancellationToken: cancellationToken);
+        var rsp = await DataBase.GetScheduleCalls();
+        await botClient.SendPhoto(message.From?.Id ?? 0, InputFile.FromFileId(rsp), cancellationToken: cancellationToken);
     }
 
     private async Task HandleRaspisanieCommand(ITelegramBotClient botClient, Message message,

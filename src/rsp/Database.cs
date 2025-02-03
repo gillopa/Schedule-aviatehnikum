@@ -135,7 +135,7 @@ static class DataBase
             }
         }
     }
-    public static async Task<long> GetScheduleCalls()
+    public static async Task<string> GetScheduleCalls()
     {
         using (SQLiteConnection connection = new SQLiteConnection(_connectionString))
         {
@@ -145,9 +145,9 @@ static class DataBase
             using (SQLiteCommand command = new SQLiteCommand(query, connection))
             {
                 var response = await command.ExecuteScalarAsync();
-                if ((long?)response == null)
-                    return 0;
-                return (long)response;
+                if ((string?)response == null)
+                    return string.Empty;
+                return (string)response;
             }
         }
     }
