@@ -110,17 +110,17 @@ static class DataBase
         return responseCount > 0;
     }
 
-    public static bool AddNewSchedule(string group, string link, DateOnly date)
+    public static bool AddNewSchedule(string group, string id, DateOnly date)
     {
         using (var connection = new SQLiteConnection(_connectionString))
         {
             connection.Open();
 
-            string query = "INSERT INTO Raspisanie (group, link, date) VALUES (@group, @link, @date)";
+            string query = "INSERT INTO Raspisanie (group, id, date) VALUES (@group, @id, @date)";
             using (SQLiteCommand command = new SQLiteCommand(query, connection))
             {
                 command.Parameters.AddWithValue("@group", group);
-                command.Parameters.AddWithValue("@link", link);
+                command.Parameters.AddWithValue("@id", id);
                 command.Parameters.AddWithValue("@date", date.ToString("yyyy.MM.dd"));
                 try
                 {
@@ -141,7 +141,7 @@ static class DataBase
         {
             await connection.OpenAsync();
             string query =
-                "SELECT TOP 1 link FROM RaspisanieCalls";
+                "SELECT TOP 1 id FROM RaspisanieCalls";
             using (SQLiteCommand command = new SQLiteCommand(query, connection))
             {
                 var response = await command.ExecuteScalarAsync();
@@ -157,7 +157,7 @@ static class DataBase
         {
             await connection.OpenAsync();
             string query =
-                "SELECT link FROM Raspisanie WHERE `group` = @group AND `date` = @date";
+                "SELECT id FROM Raspisanie WHERE `group` = @group AND `date` = @date";
             using (SQLiteCommand command = new SQLiteCommand(query, connection))
             {
                 command.Parameters.AddWithValue("@group", group);
