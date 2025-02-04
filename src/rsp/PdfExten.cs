@@ -11,7 +11,7 @@ using iText.Kernel.Pdf.Annot;
 
 static class PdfDocumentExtensions
 {
-    public static string ExtractTextFromPdfBytes(this PdfDocument pdfDocument)
+    public static string ExtractText(this PdfDocument pdfDocument)
     {
         var text = new System.Text.StringBuilder();
         for (int i = 1; i <= pdfDocument.GetNumberOfPages(); ++i)
@@ -22,11 +22,12 @@ static class PdfDocumentExtensions
         }
         return text.ToString();
     }
+
     public static string? GetDayOfWeek(this PdfDocument pdfDocument)
     {
         try
         {
-            string extractedText = ExtractTextFromPdfBytes(pdfDocument);
+            string extractedText = pdfDocument.ExtractText();
             foreach (var day in Raspisanie.DaysOfWeek)
             {
                 if (extractedText.Contains(day))
@@ -39,6 +40,7 @@ static class PdfDocumentExtensions
         }
         return null;
     }
+
     public static string? GetDate(this PdfDocument pdfDocument)
     {
         string pattern = @"учебных занятий на (\d{2}\.\d{2}\.\d{4}) \((.*?)\)"; // Паттерн для поиска
@@ -59,6 +61,7 @@ static class PdfDocumentExtensions
         }
         return null;
     }
+
     public static (float x, float y) GetCoords(this PdfDocument pdfDocument, string nameOfGrup)
     {
 
@@ -77,7 +80,8 @@ static class PdfDocumentExtensions
         }
         return (0, 0);
     }
-    public static void CropPdf(this PdfDocument pdfDocument, FileInfo outputFile, float x, float y, float width, float height)
+
+    public static void Crop(this PdfDocument pdfDocument, FileInfo outputFile, float x, float y, float width, float height)
     {
         using (PdfReader reader = pdfDocument.GetReader())
         using (PdfWriter writer = new PdfWriter(outputFile.FullName))
