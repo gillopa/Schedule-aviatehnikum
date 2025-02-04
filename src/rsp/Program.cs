@@ -2,17 +2,29 @@
 using Microsoft.Extensions.Hosting;
 using Serilog;
 using rsp;
+using Telegram.Bot;
 
 Log.Logger = new LoggerConfiguration()
     .WriteTo.Console()
     .CreateLogger();
+
 try 
 {
     var app = Host.CreateDefaultBuilder()
         .ConfigureServices((context, services) =>
         {
+            services.AddSerilog();
             services.AddHostedService<SchedulePullingService>();
             services.AddHostedService<TelegramBot>();
+
+            services.AddSingleton<TelegramBotClient>(_ => 
+            {
+                string? token = context.Configuration["TelegramBot:Token"];
+                if (token is null)
+                    throw new InvalidDataException("Value for TelegramBot:Token missing in config.");
+                return new TelegramBotClient(token); 
+            });
+
             services.AddMediatR(config =>
             {
                 config.RegisterServicesFromAssembly(typeof(Program).Assembly);

@@ -8,7 +8,7 @@ namespace rsp;
 
 public class SchedulePullingService : IHostedService
 {
-    private readonly TimeSpan _pullingInterval = TimeSpan.FromMilliseconds(100);
+    private readonly TimeSpan _pullingInterval = TimeSpan.FromMilliseconds(1000);
     private readonly CancellationTokenSource _cts = new();
     private readonly HttpClient _client; 
     private readonly IMediator _mediator;
@@ -23,7 +23,8 @@ public class SchedulePullingService : IHostedService
         IMediator mediator) 
     {
         _logger = logger;
-        _sequentialCode = configuration.GetValue<int>("sequentialCode");
+        _sequentialCode = configuration.GetValue<int>("SequentialCode");
+        _logger.LogInformation($"SequentialCode: {_sequentialCode}");
         _mediator = mediator;
         _client = new HttpClient(new HttpClientHandler() {
                 AllowAutoRedirect = false
@@ -32,6 +33,8 @@ public class SchedulePullingService : IHostedService
     
     public Task StartAsync(CancellationToken cancellatinoToken)
     {
+        _logger.LogInformation("Running...");
+
         if (_pullingTask is not null)
             throw new InvalidOperationException("Already running.");
 
@@ -42,9 +45,11 @@ public class SchedulePullingService : IHostedService
     
     public async Task StopAsync(CancellationToken cancellatinoToken)
     {
+        _logger.LogInformation("Stoping...");
+
         if (_pullingTask is null)
             throw new InvalidOperationException("Not running.");
-        
+
         await _cts.CancelAsync();
         await _pullingTask;
         _pullingTask.Dispose();
@@ -62,10 +67,10 @@ public class SchedulePullingService : IHostedService
                     $"https://permaviat.ru/_engine/get_file.php?f={_sequentialCode}&d=_res/fs/&p=file.pdf",
                     cancellationToken);
 
-                if (response.StatusCode is HttpStatusCode.Found)
+                if (response.StatusCode == HttpStatusCode.Found)
                     continue;
 
-                if (response.StatusCode is not HttpStatusCode.OK)
+                if (response.StatusCode != HttpStatusCode.OK)
                 {
                     _logger.LogWarning(
                         "Unexpected http status code ({StatusCode}/{StatusCodeName}) ocured on downloading schedule.",
@@ -81,10 +86,12 @@ public class SchedulePullingService : IHostedService
                     });
 
                 _sequentialCode++;
+
+                _logger.LogInformation($"New schedule was pulled. New sequential code is {_sequentialCode}");
             }
             catch (HttpRequestException ex) 
             {
-                _logger.LogError(0, ex, 
+                _logger.LogError(ex, 
                     "Unexpected HttpRequestException ocured on downloading schedule, probably connectivity issue.");
             }
         }

@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Telegram.Bot;
 using Telegram.Bot.Polling;
 using Telegram.Bot.Types;
@@ -12,30 +13,24 @@ using Telegram.Bot.Types.ReplyMarkups;
 
 class TelegramBot : IHostedService
 {
+    private ILogger<TelegramBot> _logger;
     private TelegramBotClient bot;
-    private string botTokenPath = "Token.json";
     private ConcurrentDictionary<string, string> _cashFileIds = new();
-    private CancellationTokenSource _cancelTokenSource;
+    private CancellationTokenSource? _cancelTokenSource;
+
+    public TelegramBot(
+        ILogger<TelegramBot> logger,
+        TelegramBotClient botClient)
+    {
+        _logger = logger;
+        bot = botClient;
+    }
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         _cancelTokenSource = new CancellationTokenSource();
-        string jsonString = File.ReadAllText(botTokenPath);
-        JsonSerializerOptions options = new JsonSerializerOptions
-        {
-            PropertyNameCaseInsensitive = true
-        };
-
-        var configuration = JsonSerializer.Deserialize<JsonObject>(jsonString, options);
-        if (configuration == null || !configuration.ContainsKey("Token"))
-        {
-            throw new Exception("Not found");
-        }
-
-        var botToken = configuration["token"].ToString();
-        bot = new TelegramBotClient(botToken);
-        var me = await bot.GetMeAsync();
-        Console.WriteLine($"Bot {me.Username} has started.");
+        var me = await bot.GetMe();
+        _logger.LogInformation($"Bot {me.Username} has started.");
         var receiverOptions = new ReceiverOptions
         {
             AllowedUpdates = { }
@@ -57,8 +52,12 @@ class TelegramBot : IHostedService
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
+        if (_cancelTokenSource is null)
+            throw new InvalidOperationException("Already running.");
+
         await _cancelTokenSource.CancelAsync();
     }
+
     private async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update,
         CancellationToken cancellationToken)
     {
@@ -75,7 +74,7 @@ class TelegramBot : IHostedService
         }
         catch (Exception ex)
         {
-            Console.WriteLine(ex);
+            _logger.LogError("idk some error i don't wanna to read your shity code",ex);
         }
     }
 
@@ -114,14 +113,14 @@ class TelegramBot : IHostedService
                 await bot.SendPhoto(chatId, photo, cancellationToken: cancellationToken);
             }
         }
-        catch (JsonException e)
+        catch (JsonException ex)
         {
-            Console.WriteLine(e);
+            _logger.LogError("idk some error i don't wanna to read your shity code",ex);
             await botClient.SendMessage(chatId, "Your request are dumb", cancellationToken: cancellationToken);
         }
-        catch (Exception e)
+        catch (Exception ex)
         {
-            Console.WriteLine(e);
+            _logger.LogError("idk some error i don't wanna to read your shity code",ex);
         }
     }
 
@@ -226,7 +225,8 @@ class TelegramBot : IHostedService
     private Task HandleErrorAsync(ITelegramBotClient botClient, Exception exception,
         CancellationToken cancellationToken)
     {
-        Console.WriteLine(exception);
+
+        _logger.LogError("idk some error i don't wanna to read your shity code", exception);
         return Task.CompletedTask;
     }
 
