@@ -136,6 +136,7 @@ public class TelegramBot : IHostedService
                 }
 
                 await _dataBase.UpdateGroupStatusAsync(chatId, group);
+                await _botClient.SendMessage(chatId, $"Your group no is: {group}");
             }
             else if (json.ContainsKey("getDay"))
             {
@@ -236,7 +237,7 @@ public class TelegramBot : IHostedService
     {
 
         var rsp = await _dataBase.GetScheduleCalls();
-        await botClient.SendPhoto(message.From?.Id ?? 0, InputFile.FromFileId(rsp), cancellationToken: cancellationToken);
+        await botClient.SendPhoto(message.From?.Id ?? 0, InputFile.FromString(rsp), cancellationToken: cancellationToken);
     }
 
     private async Task HandleRaspisanieCommand(ITelegramBotClient botClient, Message message,

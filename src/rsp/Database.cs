@@ -243,7 +243,7 @@ public class ScheduleRepository
                 "SELECT date FROM Raspisanie WHERE `group` = @group AND date BETWEEN @startDate AND @endDate";
             using (var command = new SQLiteCommand(query, connection))
             {
-                DateTime today = DateTime.UtcNow.AddHours(5).Date;
+                var today = DateTime.UtcNow.AddDays(1).Date;
                 DateTime startDate = today.AddDays(-daysFromToday);
                 DateTime endDate = today;
 
