@@ -8,7 +8,7 @@ namespace Schedule.Pulling;
 
 public class SchedulePullingService : IHostedService
 {
-    private readonly TimeSpan _pullingInterval = TimeSpan.FromMilliseconds(1000);
+    private readonly TimeSpan _pullingInterval = TimeSpan.FromMilliseconds(1000 * 30);
     private readonly CancellationTokenSource _cts = new();
     private readonly HttpClient _client;
     private readonly IMediator _mediator;
